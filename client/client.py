@@ -1,5 +1,7 @@
 import cv2
 import socket
+import sys
+import signal
 
 cap = cv2.VideoCapture(0)
 frame_width = 1280
@@ -9,6 +11,14 @@ frame_height = 720
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_address = ('localhost', 5000)
 sock.connect(server_address)
+
+def exit(sig,frame):
+    cap.release()
+    cv2.destroyAllWindows()
+    sock.close()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, exit)
 
 def live_stream(frame):
     try:
@@ -31,9 +41,9 @@ def live_stream(frame):
         
         # Send frame bytes
         sock.sendall(image_bytes)
-    except Exception as inst:
+    except Exception as e:
         print('An error occurred while trying to stream live video.')
-        print(inst)
+        print(e)
 
 try:
     while True:
@@ -41,15 +51,10 @@ try:
         if not ret:
             print("Error capturing video!")
             break
-        
+
         live_stream(frame)
-        
-        if cv2.waitKey(1) == ord('q'):
-            break
-except Exception as inst:
+except Exception as e:
     print('An error occurred while capturing live streaming from the camera.')
-    print(inst)
+    print(e)
 finally:
-    cap.release()
-    cv2.destroyAllWindows()
-    sock.close()
+    exit(None, None)

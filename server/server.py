@@ -4,6 +4,8 @@ import numpy as np
 import signal
 import sys
 import select
+from yolo import yolo_detection
+from datetime import datetime
 
 # TCP/IP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -16,18 +18,17 @@ frame_width = 1280
 frame_height = 720
 fps = 20
 fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-output_file = 'data/data.mp4'
-writer = cv2.VideoWriter(output_file, fourcc, fps, (frame_width, frame_height))
-
+writer = None
 connection = None
 
-def exit(sig, frame):
+def exit(sig,frame):
     global connection
     if connection:
         connection.close()
     cv2.destroyAllWindows()
     sock.close()
-    writer.release()
+    if writer and writer.isOpened():
+        writer.release()
     sys.exit(0)
 
 signal.signal(signal.SIGINT, exit)
@@ -46,7 +47,20 @@ try:
     while True:
         print("Waiting for connection...")
         readable, _, _ = select.select([sock], [], [], 1)
+        if writer:
+            print('Releasing writer...')
+            writer.release()
+            writer = None
         if sock in readable:
+            if writer is None:
+                filename = f"rec-{datetime.now().strftime('%H_%M_%S-%m-%d-%Y')}.mp4"
+                print(f"Creating a new VideoWriter for data/{filename}...")
+                writer = cv2.VideoWriter(
+                    f"data/{filename}",
+                    fourcc,
+                    fps,
+                    (frame_width, frame_height)
+                )
             conn, addr = sock.accept()
             connection = conn
             print('Connected by', addr)
@@ -74,14 +88,13 @@ try:
                     # Resize the frame to match the expected dimensions
                     frame = cv2.resize(frame, (frame_width, frame_height))
 
-                    print(frame)                    
-                    # Write the frame to the video file
-                    writer.write(frame)
 
-                    # Optional: Display the frame
-                    # cv2.imshow('Server Frame', frame)
-                    # if cv2.waitKey(1) == ord('q'):
-                    #     break
+                    (yolo_frame, yolo_status) = yolo_detection(frame)
+
+                    # Write the frame to the video file
+                    if writer:
+                        print('Writing...')
+                        writer.write(yolo_frame if yolo_status is not None else frame)
                 except Exception as inst:
                     print('Caught an error while trying to manage live stream.')
                     print(inst)
@@ -89,6 +102,5 @@ try:
             connection = None
 except Exception as e:
     print(f"An unexpected error occurred: {e}")
-    exit(None, None)
 finally:
     exit(None, None)
